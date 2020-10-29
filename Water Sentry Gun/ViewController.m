@@ -6,7 +6,7 @@
 //
 
 #import "ViewController.h"
-
+#include "SentryGun.h"
 
 @interface ViewController ()
 
@@ -19,19 +19,47 @@
 -(void)viewDidLoad {
     [super viewDidLoad];
     
-    self.centralManager = [[CBCentralManager alloc]initWithDelegate:self queue:nil];
+    if(!self.centralManager)
+        self.centralManager = [[CBCentralManager alloc]initWithDelegate:self queue:nil];
     
 }
 -(IBAction)connectButtonPressed:(id)sender
 {
-    SentryGunBluetoothData *data = calloc(1, sizeof(SentryGunBluetoothData));
-    data->magic = SENTRY_GUN_MAGIC;
-    data->command = SentryGunInit;
-    strlcpy((char*)&data->action, "connect", strlen("connect"));
+    NSString *settingsUrl= @"App-Prefs:root=Bluetooth";
+    if ([[UIApplication sharedApplication] respondsToSelector:@selector(openURL:options:completionHandler:)]) {
+
+            [[UIApplication sharedApplication] openURL:[NSURL URLWithString:settingsUrl] options:@{} completionHandler:^(BOOL success) {
+                NSLog(@"Bluetooth URL opened");
+            }];
+    }
+}
+- (IBAction)leftButtonPressed:(UIButton*)sender
+{
+    NSString *command = [sender.currentTitle lowercaseString];
     
-    NSData *value = [NSData dataWithBytes:data length:sizeof(SentryGunBluetoothData)];
+    [self sendGunCommand:command];
+}
+
+- (IBAction)rightButtonPressed:(UIButton*)sender
+{
+    NSString *command = [sender.currentTitle lowercaseString];
     
-    [self.rpi4Peripheral writeValue:value forCharacteristic:nil type:CBCharacteristicWriteWithResponse];
+    [self sendGunCommand:command];
+}
+
+- (IBAction)shootButtonPressed:(UIButton*)sender
+{
+    NSString *command = [sender.currentTitle lowercaseString];
+    
+    [self sendGunCommand:command];
+}
+
+-(void)sendGunCommand:(NSString*)cmd
+{
+    const char *utf8 = [cmd UTF8String];
+    NSData *value = [NSData dataWithBytes:utf8 length:strlen(utf8)];
+    
+    [self.rpi4Peripheral writeValue:value forCharacteristic:self.gun_characteristic type:CBCharacteristicWriteWithResponse];
 }
 
 -(void)centralManager:(CBCentralManager *)central didConnectPeripheral:(CBPeripheral *)peripheral
@@ -42,14 +70,15 @@
 
 -(void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral advertisementData:(NSDictionary *)advertisementData RSSI:(NSNumber *)RSSI
 {
-    NSString *localName = [advertisementData objectForKey:CBAdvertisementDataLocalNameKey];
-    if([localName length] > 0 )
-    {
-        [self.centralManager stopScan];
-        self.rpi4Peripheral = peripheral;
-        peripheral.delegate = self;
-        [self.centralManager connectPeripheral:peripheral options:nil];
-    }
+    NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES], CBCentralManagerScanOptionAllowDuplicatesKey, nil];
+    
+    [self.centralManager stopScan];
+    self.rpi4Peripheral = peripheral;
+    peripheral.delegate = self;
+    
+    [self.centralManager connectPeripheral:peripheral options:options];
+    
+    NSLog(@"Discovered RPI4!");
 }
 
 -(void)centralManagerDidUpdateState:(CBCentralManager *)central
@@ -60,7 +89,7 @@
     }
     else if([central state] == CBManagerStatePoweredOn){
         NSLog(@"Core Bluetooth BLE hardware powered on and ready");
-        NSArray *services = @[[CBUUID UUIDWithString:RPI4_UUID],[CBUUID UUIDWithString:RPI4_UUID]];
+        NSArray *services = @[[CBUUID UUIDWithString:RPI4_GUN_SERVICE_UUID]];
         [self.centralManager scanForPeripheralsWithServices:services options:nil];
     }
     else if([central state] == CBManagerStateUnauthorized){
@@ -78,25 +107,29 @@
 {
     for(CBService *service in peripheral.services){
         NSLog(@"Discovered Service: %@", service.UUID);
-        [peripheral discoverCharacteristics:nil forService:service];
+        
+        if([service.UUID isEqual:[CBUUID UUIDWithString:RPI4_GUN_SERVICE_UUID]])
+        {
+            self.gun_service = service;
+            NSLog(@"Discovered RPI4 service");
+            
+            [peripheral discoverCharacteristics:@[[CBUUID UUIDWithString:RPI4_GUN_CHRC_UUID]] forService:service];
+        }
     }
 }
 
 -(void)peripheral:(CBPeripheral *)peripheral didDiscoverCharacteristicsForService:(CBService *)service error:(NSError *)error
 {
-    if([service.UUID isEqual:[CBUUID UUIDWithString:RPI4_UUID]]){
-        for(CBCharacteristic *aChar in service.characteristics) {
-            if([aChar.UUID isEqual:[CBUUID UUIDWithString:RPI4_UUID]]){
-                [peripheral setNotifyValue:YES forCharacteristic:aChar];
-
+   // if([service.UUID isEqual:[CBUUID UUIDWithString:RPI4_GUN_SERVICE_UUID]]){
+        for(CBCharacteristic *characteristic in service.characteristics) {
+            NSLog(@"Discovered characteristic with UUID %@", [characteristic.UUID UUIDString]);
+            if([characteristic.UUID isEqual:[CBUUID UUIDWithString:RPI4_GUN_CHRC_UUID]])
+            {
+                self.gun_characteristic = characteristic;
+                NSLog(@"Discovered RPI4 characteristic");
             }
         }
-    }
-    if([service.UUID isEqual:[CBUUID UUIDWithString:RPI4_UUID]]){
-        for(CBCharacteristic *aChar in service.characteristics) {
-            [peripheral readValueForCharacteristic:aChar];
-        }
-    }
+   // }
 }
 
 -(void)peripheral:(CBPeripheral *)peripheral didUpdateStateForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error
@@ -106,11 +139,9 @@
 
 -(void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error
 {
-    if([characteristic.UUID isEqual:[CBUUID UUIDWithString:RPI4_UUID]])
+    if([characteristic.UUID isEqual:[CBUUID UUIDWithString:RPI4_GUN_CHRC_UUID]])
     {
-    }
-    if([characteristic.UUID isEqual:[CBUUID UUIDWithString:RPI4_UUID]])
-    {
+        NSLog(@"Successfully send command to RPI4");
     }
 }
 

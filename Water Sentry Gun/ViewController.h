@@ -14,7 +14,8 @@
 
 @property (nonatomic, strong) CBCentralManager *centralManager;
 @property (nonatomic, strong) CBPeripheral *rpi4Peripheral;
-@property (nonatomic, strong) NSMutableArray *characteristics;
+@property (nonatomic, strong) CBService *gun_service;
+@property (nonatomic, strong) CBCharacteristic *gun_characteristic;
 
 @end
 
