@@ -33,6 +33,22 @@
             }];
     }
 }
+
+- (IBAction)upButtonPressed:(UIButton*)sender
+{
+    NSString *command = [sender.currentTitle lowercaseString];
+    
+    [self sendGunCommand:command];
+}
+
+- (IBAction)downButtonPressed:(UIButton*)sender
+{
+    NSString *command = [sender.currentTitle lowercaseString];
+    
+    [self sendGunCommand:command];
+}
+
+
 - (IBAction)leftButtonPressed:(UIButton*)sender
 {
     NSString *command = [sender.currentTitle lowercaseString];
@@ -47,12 +63,18 @@
     [self sendGunCommand:command];
 }
 
-- (IBAction)shootButtonPressed:(UIButton*)sender
-{
-    NSString *command = [sender.currentTitle lowercaseString];
+- (IBAction)toggleButtonPressed:(UIButton*)sender {
+    NSString *command = sender.currentTitle;
     
-    [self sendGunCommand:command];
+    [self sendGunCommand:[command lowercaseString]];
+    
+    if([command isEqualToString:@"Auto"])
+        [sender setTitle:@"Manual" forState:UIControlStateNormal];
+    else if([command isEqualToString:@"Manual"])
+        [sender setTitle:@"Auto" forState:UIControlStateNormal];
 }
+
+
 
 -(void)sendGunCommand:(NSString*)cmd
 {
@@ -60,6 +82,8 @@
     NSData *value = [NSData dataWithBytes:utf8 length:strlen(utf8)];
     
     [self.rpi4Peripheral writeValue:value forCharacteristic:self.gun_characteristic type:CBCharacteristicWriteWithResponse];
+    
+    NSLog(@"Sending command %@", cmd);
 }
 
 -(void)centralManager:(CBCentralManager *)central didConnectPeripheral:(CBPeripheral *)peripheral
